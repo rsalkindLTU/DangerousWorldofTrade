@@ -12,7 +12,7 @@
 -- listings:
 -- LISTINGS TABLE START
 CREATE TABLE listings (
-    id integer,
+    id integer PRIMARY KEY,
     station_id integer,
     commodity_id integer,
     supply integer,
@@ -28,7 +28,7 @@ CREATE TABLE listings (
 -- Stations
 -- STATIONS TABLE START
 CREATE TABLE stations (
-    id integer,
+    id integer PRIMARY KEY,
     name text,
     system_id integer,
     updated_at integer,
@@ -72,7 +72,7 @@ CREATE TABLE stations (
 -- Systems (Larger file (3gb) but less rows than the last one holy)
 -- SYSTEMS TABLE START
 CREATE TABLE systems (
-    id integer NOT NULL,
+    id integer PRIMARY KEY,
     edsm_id integer,
     name text,
     x real,
@@ -104,7 +104,7 @@ CREATE TABLE systems (
 -- Commodity reference
 -- COMMODITIES TABLE START
 CREATE TABLE commodities (
-    id integer,
+    id integer PRIMARY KEY,
     name text,
     category_id integer,
     average_price integer,

@@ -4,7 +4,7 @@ database file needed for the E:D trading tool thing. It
 relies on only one outside dependency (requests) for fetching
 files from URLs. The function gen() begins the entire process.
 
-Dependencies: requests (tested on 2.22.0) [Found in fetch.py]
+Dependencies: requests (tested on 2.22.0)
 Author: Rhys Salkind
 License: (TODO)
 
@@ -16,7 +16,6 @@ import os
 import re
 import pickle
 import requests
-#import fetch as f
 import sqlite3 as sql
 
 db_name = os.path.join('..', 'universe.db')
@@ -27,6 +26,10 @@ def download_file(url):
     '''
     Downloads a file into the temp directory. May take a LONG time.
     '''
+    try:
+        os.mkdir(download_path)
+    except:
+        pass
 
     cur_path = os.getcwd()
     os.chdir(download_path)
@@ -43,18 +46,6 @@ def clean_up():
     on the user's hard drive.
     '''
     rmtree(download_path)
-
-def batch_dl(files):
-    # Start by making the directories to hold the files
-    # temporarily.
-    try:
-        os.mkdir(download_path)
-    except:
-        pass
-
-    dl_url = "https://eddb.io/archive/v6/"
-    for name in files:
-        download_file(dl_url + name)
 
 def convert_to_bin(items):
     '''
@@ -97,10 +88,9 @@ def update_systems(filename, cursor, conn):
         - cursor: a database cursor object to execute commands on
     OUTPUTS: nothing.
     '''
-    with open(os.path.join('temp', filename), 'r') as f:
-        header = f.readline()
-        del header # We don't need it at all.
-        lines = f.readlines()
+    print("[Database Check] Importing from " + filename)
+    dl_url = "https://eddb.io/archive/v6/"
+    r = requests.get(dl_url + filename, stream=True)
 
     systems_schema = load_schema('db_tables.sql')[2].split('\n')
     update_string = "UPDATE systems SET "
@@ -116,29 +106,28 @@ def update_systems(filename, cursor, conn):
     update_string = update_string[:-1] # Drop the last comma
     update_string += " WHERE id=?;"
 
-    # For each of the lines, change None into 0
     iteration = 0
     insert_list = []
-    for l in lines:
-        temp = reader([l])
+    cursor.execute("BEGIN TRANSACTION")
+    for l in r.iter_lines():
+        temp = reader([l.decode('utf-8')])
         temp = list(temp)
 
         bin_form = list(convert_to_bin(temp[0]))
         bin_form.append(bin_form.pop(0))
         insert_list.append(bin_form)
 
-        #insert_list.append(convert_to_bin(temp[0]))
-        if iteration > len(lines) // 16:
-            print(len(insert_list))
-            cursor.executemany(update_string, insert_list)
-            conn.commit()
-            insert_list = []
-            iteration = 0
-            print('Done!')
+        #if iteration > 31000000 // 16:
+            #print(insert_list[:10])
+            #cursor.executemany(load_string, insert_list)
+            #insert_list = []
+            #iteration = 0
 
-        iteration += 1
+        #iteration += 1
 
+    print("[Database Check] Recent systems executing.")
     cursor.executemany(update_string, insert_list)
+    cursor.execute("END TRANSACTION")
 
 def import_from_json(filename, cursor):
     '''
@@ -152,7 +141,7 @@ def import_from_json(filename, cursor):
     OUTPUT: Nothing returned. Database content is changed.
     '''
 
-    print("Importing from " + filename)
+    print("[Database Check] Importing from " + filename)
     # Load all the json from the file into memory
     js = load(open(os.path.join('temp', filename), 'r'))
     load_string = "INSERT INTO "
@@ -162,6 +151,7 @@ def import_from_json(filename, cursor):
 
     iteration = 0
     to_fill = []
+    cursor.execute("BEGIN TRANSACTION")
     for item in js:
         temp = convert_to_bin(item.values())
         to_fill.append(temp)
@@ -172,6 +162,7 @@ def import_from_json(filename, cursor):
             iteration = 0
 
     cursor.executemany(load_string, to_fill)
+    cursor.execute("END TRANSACTION")
 
 def import_from_csv(filename, cursor, conn):
     '''
@@ -185,30 +176,40 @@ def import_from_csv(filename, cursor, conn):
     OUTPUT: Nothing. Database state is changed.
     '''
 
-    print("Importing from " + filename)
-    # Load the lines from the csv into memory
-    with open(os.path.join('temp', filename), 'r') as f:
-        headers = f.readline() # Grab the headers and the file content
-        lines = f.readlines()
+    print("[Database Check] Importing from " + filename)
+    # Open a streaming connection rather than a file connection
+    dl_url = "https://eddb.io/archive/v6/"
+    r = requests.get(dl_url + filename, stream=True)
 
-    headers = headers.split(',')
+    # Load the lines from the csv into memory
+    #with open(os.path.join('temp', filename), 'r') as f:
+        #headers = f.readline() # Grab the headers and the file content
+        #lines = f.readlines()
+
+    headers = False
     load_string = "INSERT INTO "
     load_string += filename[:-4] + ' VALUES ('
-    load_string += '?,' * len(headers)
-    load_string = load_string[:-1] + ');'
 
-    # For each of the lines, change None into 0
     iteration = 0
     insert_list = []
-    for l in lines:
-        #print(l)
-        temp = reader([l])
+    cursor.execute("BEGIN TRANSACTION")
+    for l in r.iter_lines():
+        temp = reader([l.decode('utf-8')])
         temp = list(temp)
+
+        if headers is False:
+            load_string += '?,' * len(temp[0])
+            load_string = load_string[:-1] + ');'
+            headers = True
+            #print(load_string)
+            continue
+
         #print(temp[0])
         #input()
         #temp = tuple([x.strip() for x in temp])
         insert_list.append(convert_to_bin(temp[0]))
-        if iteration > len(lines) // 16:
+        if iteration > 31000000 // 16:
+            #print(insert_list[:10])
             cursor.executemany(load_string, insert_list)
             conn.commit()
             insert_list = []
@@ -217,6 +218,7 @@ def import_from_csv(filename, cursor, conn):
         iteration += 1
 
     cursor.executemany(load_string, insert_list)
+    cursor.execute("END TRANSACTION")
 
 def load_schema(schema_file):
     '''
@@ -224,7 +226,7 @@ def load_schema(schema_file):
     loads all the database scehmas from the file into
     a list of strings.
     '''
-    print(os.path.abspath('.'))
+    #print(os.path.abspath('.'))
     with open(os.path.join(os.curdir, schema_file), 'r') as f:
         lines = f.readlines()
 
@@ -297,17 +299,15 @@ def create_new(filename):
     # Create the table
     conn = sql.connect(db_name)
 
-    # Fill.
+    # Cursor to fill
     cursor = conn.cursor()
 
-    tables = load_schema(db_schema_location)
-
-    for table in tables:
-        cursor.execute(table)
+    # Read the script into the cursor
+    cursor.executescript(open(db_schema_location, 'r').read())
 
     # Save and close.
-    cursor.close()
     conn.commit()
+    cursor.close()
     conn.close()
 
 def populate_db(files):
@@ -321,11 +321,13 @@ def populate_db(files):
     # the parse type (json vs csv)
     connection = sql.connect(db_name)
     cursor = connection.cursor()
+    dl_url = "https://eddb.io/archive/v6/"
 
     for f in files:
         if f == "systems_recently.csv": # For this case, we want to alter specific rows.
             update_systems(f, cursor, connection)
         elif re.match(r"\w*.json", f):
+            download_file(dl_url + f)
             import_from_json(f, cursor)
         elif re.match(r"\w*.csv", f):
             import_from_csv(f, cursor, connection)
@@ -336,7 +338,7 @@ def populate_db(files):
     connection.commit()
     connection.close()
 
-def gen():
+def gen(force_new=False):
     '''
     This function will first check if the database file already exists
     Then, it will check if it needs to download anything as the files are
@@ -348,6 +350,12 @@ def gen():
     INPUTS: None
     OUTPUTS: Nothing. Database file is updated or created.
     '''
+    # If we are forcing a new database, delete the old one.
+    if force_new:
+        try:
+            os.remove('universe.db')
+        except FileNotFoundError:
+            pass
 
     # Check for the database file before continuing.
     current_path = os.path.abspath('.')
@@ -362,11 +370,9 @@ def gen():
     if os.path.isfile(db_name):
         # If it exists
         clean_existing(db_name)
-        batch_dl(files[:-1]) # EXCLUDE 'systems.csv' because it's massive.
         populate_db(files[:-1])
     else:
         create_new(db_name)
-        batch_dl(files) # We have to include the large file unfortunately.
         populate_db(files)
 
     # Once everything is done, clean up the temp folder

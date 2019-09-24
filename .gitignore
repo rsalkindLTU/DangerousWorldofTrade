@@ -1,5 +1,9 @@
-universe.db
 *__pycache__/
 *.swp
 
 /db/temp/
+
+user.json
+universe.db
+
+*.log

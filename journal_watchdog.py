@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# -*- coding:utf-8 -*-
+
 # All this file does is send a message when a journal file for 
 # Elite Dangerous is updated.
 
@@ -22,7 +22,6 @@ class MyHandler(FileSystemEventHandler):
         ind = temp.find('\\', 28)
         self.filename = temp[len(temp) - ind + 2:]
         print(self.filename)
-
 
 working_dir = """C:\\Users\\rsalkind\\Saved Games\\Frontier Developments\\Elite Dangerous"""
 
