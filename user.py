@@ -1,6 +1,8 @@
 import os
 import queue
 import json
+import asyncio
+##import journal_watchdog as jw
 from datetime import datetime
 from db import gen
 
@@ -19,6 +21,7 @@ class User:
         self.websocket_server = None # An object representing a websocket server
         self.client = None # An object representing the websocket client (our html/dart part)
         self.confirm = True # An object used to confirm a response
+        #self.watchdog = None # A watchdog item that watches the file system for journal log updates
 
         if filename != '':
             self.parse_from_file(filename)
@@ -135,6 +138,7 @@ class User:
     def register_client(self, client):
         print("[Web Socket Server] Client registered.")
         self.client = client
+        self.listen_and_wait()
 
     def log_websocket_error(self, exception):
         print("[Web Socket Server] Exception: (" + exception + ")")
@@ -145,9 +149,72 @@ class User:
         print("[Web Socket Server] Client has disconnected.")
         self.client = None
 
+    def listen_and_wait(self):
+        pass
+
+    '''
+    def load_watcher(self):
+        self.watchdog = jw.Watcher(user_in=self)
+        self.watchdog.set_target = self.json_file_reader
+        #self.watchdog.setup_watcher()
+        '''
+
+    def json_file_reader(self, bytes_off, filename):
+        # Takes in a filepath, and a number of bytes off. 
+        # Each line needs to get parsed into a request that
+        # the socket server will be sending to the client.
+
+        # Read from the file
+        f = open(filename, 'r')
+        f.seek(bytes_off)
+        # Because we don't know how many lines are new, we need to loop
+        temp = f.readline()
+        while temp != '':
+            js = json.loads(temp)
+
+            # The JSON follows a semi-specific format:
+            #   js['timestamp'] is always present
+            #   js['event'] is always present
+            #   LITERATELY EVERYTHING ELSE is optional and depends on what you're doing.
+
+            # We pick and choose what happens on each event
+            # The major ones we need for data:
+            #   Location : Tells us where we are in the universe (station name, ly coords, etc)
+            #   LoadGame : Tells us commander name and fuel level (for maths!)
+            #   Cargo    : Tells us cargo capacity and if the user has cargo currently.
+            #   Docked   : Tells us where the commander is following the initial location event
+
+            #   MarketBuy  : Tells us what the player bought and for how much
+            #   MarketSell : Tells us what the player sold and how much they sold it for.
+
+            # Basically everything else can be ignored (for now)
+            event = js['event']
+
+            if event == 'Location':
+                pass
+            elif event == 'LoadGame':
+                pass
+            elif event == 'Cargo':
+                pass
+            elif event == 'Docked':
+                pass
+            elif event == 'MarketBuy':
+                pass
+            elif event == 'MarketSell':
+                pass
+
+
+            temp = f.readline()
+
+        new_off = f.tell()
+        f.close()
+        return new_off
+
+
 def user_consumer(user):
     while 1:
         # Block until a user message is seen
         item = user.message_queue.get()
         continue # do nothing for now
+
 
