@@ -4,19 +4,20 @@ database file needed for the E:D trading tool thing. It
 relies on only one outside dependency (requests) for fetching
 files from URLs. The function gen() begins the entire process.
 
-Dependencies: requests (tested on 2.22.0)
+External Dependencies: requests (<=2.22.0)
 Author: Rhys Salkind
 License: (TODO)
 
 """
-from json import load
-from csv import reader
-from shutil import rmtree
-import os
-import re
-import pickle
-import requests
-import sqlite3 as sql
+from json import load               # For loading json fron a file into a structure
+from csv import reader              # To help load csv into a list for processing
+from shutil import rmtree           # To remove the temporary directory easily.
+from operator import itemgetter     # To work with specific indices of database columns 
+import os                           # Mostly for os.path stuff. Also os.remove to remove files.
+import re                           # Regex to find markers in the db_tables file
+import pickle                       # For storing blob data in the database.
+import requests                     # For http requests
+import sqlite3 as sql               # For the sqlite3 Database operations!
 
 db_name = os.path.join('..', 'universe.db')
 db_schema_location = 'db_tables.sql'
@@ -24,7 +25,9 @@ download_path = os.path.join('.', 'temp')
 
 def download_file(url):
     '''
-    Downloads a file into the temp directory. May take a LONG time.
+    Downloads a file into the temp directory. This function
+    is no longer used for any csv files, as they are quite
+    large.
     '''
     try:
         os.mkdir(download_path)
@@ -92,11 +95,18 @@ def update_systems(filename, cursor, conn):
     dl_url = "https://eddb.io/archive/v6/"
     r = requests.get(dl_url + filename, stream=True)
 
+    indicies = [0,1,2,3,4,5,7,19]
+
     systems_schema = load_schema('db_tables.sql')[2].split('\n')
+    #sys_schemas = [s.split('\n') for s in systems_schema]
+    #sys_schemas = [s.strip() for s in sys_schemas]
     update_string = "UPDATE systems SET "
     for s in systems_schema[2:-2]:
         string = s.split(' ')
+        if string[4].find('--') != -1:
+            continue
         for elm in string:
+            #print("Elm find(--): {} for {}".format( elm.find('--'), elm))
             if elm != '':
                 string = elm
                 break
@@ -114,6 +124,7 @@ def update_systems(filename, cursor, conn):
         temp = list(temp)
 
         bin_form = list(convert_to_bin(temp[0]))
+        bin_form = list(itemgetter(*indicies)(bin_form))
         bin_form.append(bin_form.pop(0))
         insert_list.append(bin_form)
 
@@ -140,23 +151,36 @@ def import_from_json(filename, cursor):
 
     OUTPUT: Nothing returned. Database content is changed.
     '''
+    # Start by loading in all the indicies for each potential file
+    indicies = []
+    if filename.find('commodities') != -1:
+        indicies = [0, 1, 3, 4] # id, name, avg_price, is_rare
+    elif filename.find('stations') != -1:
+        indicies = [0, 1, 2, 4] + list(range(13, 21 + 1))
+        # id, name, system_id, landing_pad_size, has_*
+    #print('Using indicies: {} for filename "{}"'.format(indicies, filename))
 
     print("[Database Check] Importing from " + filename)
     # Load all the json from the file into memory
     js = load(open(os.path.join('temp', filename), 'r'))
     load_string = "INSERT INTO "
     load_string += filename[:-5] + ' VALUES ('
-    load_string += '?,' * len(js[0].values())
+    load_string += '?,' * len(indicies)
     load_string = load_string[:-1] + ');'
+    #print("Load string: '{}'".format(load_string))
 
     iteration = 0
     to_fill = []
     cursor.execute("BEGIN TRANSACTION")
     for item in js:
         temp = convert_to_bin(item.values())
+        temp = itemgetter(*indicies)(temp)
         to_fill.append(temp)
         iteration += 1
         if iteration > 10000:
+            for i in to_fill:
+                if len(i) > 13:
+                    print(i)
             cursor.executemany(load_string, to_fill)
             to_fill = []
             iteration = 0
@@ -175,6 +199,13 @@ def import_from_csv(filename, cursor, conn):
         - conn: database connection to commit changes when working on large datasets.
     OUTPUT: Nothing. Database state is changed.
     '''
+    indicies = []
+    if filename == 'listings.csv':
+        indicies = list(range(9 + 1))
+    elif filename == 'systems.csv':
+        indicies = list(range(0, 5 + 1)) + [7, 19]
+
+    #print('Using indicies: {} for filename "{}"'.format(indicies, filename))
 
     print("[Database Check] Importing from " + filename)
     # Open a streaming connection rather than a file connection
@@ -196,9 +227,10 @@ def import_from_csv(filename, cursor, conn):
     for l in r.iter_lines():
         temp = reader([l.decode('utf-8')])
         temp = list(temp)
+        temp = itemgetter(*indicies)(temp[0])
 
         if headers is False:
-            load_string += '?,' * len(temp[0])
+            load_string += '?,' * len(temp)
             load_string = load_string[:-1] + ');'
             headers = True
             #print(load_string)
@@ -207,9 +239,8 @@ def import_from_csv(filename, cursor, conn):
         #print(temp[0])
         #input()
         #temp = tuple([x.strip() for x in temp])
-        insert_list.append(convert_to_bin(temp[0]))
+        insert_list.append(convert_to_bin(temp))
         if iteration > 31000000 // 16:
-            #print(insert_list[:10])
             cursor.executemany(load_string, insert_list)
             conn.commit()
             insert_list = []
@@ -220,10 +251,22 @@ def import_from_csv(filename, cursor, conn):
     cursor.executemany(load_string, insert_list)
     cursor.execute("END TRANSACTION")
 
+def generate_index_tables(cursor):
+    '''
+    This function will declare the necessary index
+    tables for our database
+    '''
+
+    cursor.execute("DROP INDEX idx_station_names")
+    cursor.execute("CREATE UNIQUE INDEX idx_station_names ON stations(name)")
+    #cursor.execute("CREATE UNIQUE INDEX idx_system_location ON systems (x, y, z)")
+    cursor.execute("CREATE UNIQUE INDEX idx_system_names ON systems(name)")
+
+
 def load_schema(schema_file):
     '''
     This function takes in a filename as a string and
-    loads all the database scehmas from the file into
+    loads all the database schemas from the file into
     a list of strings.
     '''
     #print(os.path.abspath('.'))
@@ -334,6 +377,9 @@ def populate_db(files):
 
         connection.commit()
 
+    # Ensure that the index tables are up and running
+    # TODO
+    generate_index_tables(cursor)
     cursor.close()
     connection.commit()
     connection.close()
