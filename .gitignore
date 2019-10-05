@@ -7,3 +7,6 @@ user.json
 universe.db
 
 *.log
+*.bat
+*.maps
+*.deps
