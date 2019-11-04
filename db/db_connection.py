@@ -7,7 +7,7 @@ class DBHandler:
     requests, and clean up easier.
     '''
     def __init__(self):
-        self.db_filepath = os.path.join('..', 'universe.db')
+        self.db_filepath = os.path.join('.', 'universe.db')
         self.connection = sql.connect(self.db_filepath)
 
     def request(self, string, items=()):

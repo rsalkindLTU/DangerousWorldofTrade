@@ -257,11 +257,11 @@ def generate_index_tables(cursor):
     tables for our database
     '''
 
-    cursor.execute("DROP INDEX idx_station_names")
+    cursor.execute("DROP INDEX IF EXISTS idx_station_names")
+    cursor.execute("DROP INDEX IF EXISTS idx_systems_loation")
     cursor.execute("CREATE UNIQUE INDEX idx_station_names ON stations(name)")
     #cursor.execute("CREATE UNIQUE INDEX idx_system_location ON systems (x, y, z)")
     cursor.execute("CREATE UNIQUE INDEX idx_system_names ON systems(name)")
-
 
 def load_schema(schema_file):
     '''
@@ -379,10 +379,29 @@ def populate_db(files):
 
     # Ensure that the index tables are up and running
     # TODO
-    generate_index_tables(cursor)
+    #generate_index_tables(cursor)
     cursor.close()
     connection.commit()
     connection.close()
+
+def post_gen():
+    '''
+    This function will do any operations on the database itself that need
+    to get done after the generation process.
+    '''
+    conn = sql.connect(db_name)
+    cursor = conn.cursor()
+
+    # Clean the indexes
+    cursor.execute("DROP INDEX IF EXISTS idx_system_names;")
+    conn.commit()
+
+    # Generate new indexes.
+    cursor.execute("CREATE INDEX idx_system_names ON systems(name);")
+
+    cursor.close()
+    conn.commit()
+    conn.close()
 
 def gen(force_new=False):
     '''
@@ -417,9 +436,11 @@ def gen(force_new=False):
         # If it exists
         clean_existing(db_name)
         populate_db(files[:-1])
+        post_gen()
     else:
         create_new(db_name)
         populate_db(files)
+        post_gen()
 
     # Once everything is done, clean up the temp folder
     clean_up()
