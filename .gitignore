@@ -8,5 +8,5 @@ universe.db
 
 *.log
 *.bat
-*.maps
+*.map
 *.deps
