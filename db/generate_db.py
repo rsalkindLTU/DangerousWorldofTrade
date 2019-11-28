@@ -251,18 +251,6 @@ def import_from_csv(filename, cursor, conn):
     cursor.executemany(load_string, insert_list)
     cursor.execute("END TRANSACTION")
 
-def generate_index_tables(cursor):
-    '''
-    This function will declare the necessary index
-    tables for our database
-    '''
-
-    cursor.execute("DROP INDEX IF EXISTS idx_station_names")
-    cursor.execute("DROP INDEX IF EXISTS idx_systems_loation")
-    cursor.execute("CREATE UNIQUE INDEX idx_station_names ON stations(name)")
-    #cursor.execute("CREATE UNIQUE INDEX idx_system_location ON systems (x, y, z)")
-    cursor.execute("CREATE UNIQUE INDEX idx_system_names ON systems(name)")
-
 def load_schema(schema_file):
     '''
     This function takes in a filename as a string and
@@ -389,19 +377,25 @@ def post_gen():
     This function will do any operations on the database itself that need
     to get done after the generation process.
     '''
+    print("[Database Check] Running database post-creation process. . .")
     conn = sql.connect(db_name)
     cursor = conn.cursor()
 
     # Clean the indexes
     cursor.execute("DROP INDEX IF EXISTS idx_system_names;")
+    cursor.execute("DROP INDEX IF EXISTS idx_listings_stationids;")
     conn.commit()
 
     # Generate new indexes.
     cursor.execute("CREATE INDEX idx_system_names ON systems(name);")
+    cursor.execute("CREATE INDEX idx_listings_stationids ON listings(station_id);")
+
+    # Generate the distances table
 
     cursor.close()
     conn.commit()
     conn.close()
+
 
 def gen(force_new=False):
     '''

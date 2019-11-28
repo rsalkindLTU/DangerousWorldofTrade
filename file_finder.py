@@ -3,6 +3,9 @@ from tkinter import messagebox
 from tkinter.filedialog import askopenfilename
 
 def find():
+    '''
+    Provide the user with a graphical interface for finding a file.
+    '''
     # Do not show the root item
     root = tkinter.Tk()
     root.withdraw()
@@ -13,6 +16,9 @@ def find():
     return name
 
 def notify():
+    '''
+    Notify the user that the upcoming window with detail on what needs to happen next.
+    '''
     # Do not show the default window.
     root = tkinter.Tk()
     root.withdraw()
@@ -27,5 +33,8 @@ def notify():
     messagebox.showinfo("DangerousWorldOfTrade", statement)
 
 def find_journal_directory():
+    '''
+    Simple wrapper to notify the user and find the file for them.
+    '''
     notify()
     return find()

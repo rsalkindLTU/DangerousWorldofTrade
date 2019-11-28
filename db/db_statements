@@ -15,5 +15,23 @@ def distance(x, y, z):
 SELECT listings.commodity_id, listings.buy_price, listings.sell_price, stations.name
 FROM listings
 INNER JOIN stations
-ON listings.station_id = stations.id
-WHERE listings.station_id IN (SELECT id FROM stations WHERE system_id IN (SELECT id FROM systems WHERE DISTANCE(x - ?, y - ?, z - ?) < ?)) (cur_x, cur_y, cur_z, cur_range)
+    ON listings.station_id = stations.id
+        WHERE listings.station_id IN (SELECT id FROM stations WHERE system_id IN (SELECT id FROM systems WHERE DISTANCE(x - ?, y - ?, z - ?) < ?)) (cur_x, cur_y, cur_z, cur_range)
+
+
+
+
+SELECT name, average_price FROM commodities WHERE id IN 
+    (SELECT commodity_id FROM listings WHERE buy_price != 0 AND sell_price !=0 AND station_id in 
+        (SELECT id FROM stations WHERE system_id IN 
+            (SELECT id FROM systems WHERE DISTANCE(x - ?, y - ?, z - ?) < ?)))
+
+
+'''
+BEGIN TRANSACTION;
+DROP TABLE IF EXISTS distances;
+CREATE TABLE distances (id integer PRIMARY KEY, distance real);
+INSERT INTO distances (id, distance)
+SELECT id, DISTANCE(x - 21.53125, y - -19.21875, z - 4.25) FROM systems;
+COMMIT;
+'''
